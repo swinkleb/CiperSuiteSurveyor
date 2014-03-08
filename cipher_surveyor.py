@@ -1,4 +1,4 @@
-import socket, logging, getopt, sys, binascii, sqlite3
+import socket, logging, getopt, sys, binascii, sqlite3, threading
 
 client_hello = (
 '\x80\x2c\x01\x03\x04\x00\x03\x00\x00\x00\x20', #TLS v1.3
@@ -16,6 +16,17 @@ ACCEPTED=0
 REJECTED=1
 TIMEOUT=2
 ERROR=3
+
+class myThread (threading.Thread):
+	def __init__(self, threadID, websites, cipher_ids, logger, tls_index):
+		threading.Thread.__init__(self)
+		self.threadID = threadID
+		self.websites = websites
+		self.cipher_ids = cipher_ids
+		self.logger = logger
+		self.tls_index = tls_index
+	def run(self):
+		batch_check_ciphers(self.websites, self.cipher_ids, self.logger, self.tls_index)
 
 def is_cipher_accepted(cipher, host, port, logger, index):
 	soc = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -47,6 +58,10 @@ def is_cipher_accepted(cipher, host, port, logger, index):
 	except socket.timeout:
 		soc.close()
 		return TIMEOUT
+	except socket.error, (value, message):
+		logger.error('Failed to connect to host: %s using port: %s' % (host, port))
+		soc.close()
+		return ERROR
 
 	isAccepted = REJECTED
 
@@ -60,6 +75,31 @@ def is_cipher_accepted(cipher, host, port, logger, index):
 	soc.close()
 
 	return isAccepted
+
+def batch_check_ciphers(websites, cipher_ids, logger, tls_index):
+	conn = sqlite3.connect('survey.db')
+	cursor = conn.cursor()
+
+	for website in websites:
+		print 'CHECKING: %s' % website[1]
+		timeout_counter = 0
+		for cipher in cipher_ids:
+			#print cipher[1]
+			isAccepted = is_cipher_accepted(binascii.unhexlify(cipher[1]), website[1], 443, logger, tls_index)
+
+			if isAccepted == ACCEPTED:
+				cursor.execute("INSERT INTO offered_cipher_suites(website_id, cipher_id, tls_id) values (?,?,?)",  (website[0], cipher[0], tls_index))
+				conn.commit()
+			elif isAccepted == TIMEOUT:
+				timeout_counter += 1
+				if timeout_counter > 10:
+					logger.info('No response from website (timeout): %s, skipping' % website[1])
+					break
+			elif isAccepted == ERROR:
+				logger.info('No response from website (error): %s, skipping' % website[1])
+				break
+
+	conn.close()
 
 def main():
 	#set up log 
@@ -82,27 +122,19 @@ def main():
 	cipher_ids = cursor.execute('SELECT * FROM cipher_suites').fetchall()
 	websites = cursor.execute('SELECT * FROM websites ORDER BY id').fetchall()
 
+	conn.close()
+
 	#do work
-	for website in websites:
-		print 'CHECKING: %s' % website[1]
-		timeout_counter = 0
-		for cipher in cipher_ids:
-			#print cipher[1]
-			isAccepted = is_cipher_accepted(binascii.unhexlify(cipher[1]), website[1], 443, logger, tls_index)
+	threads = []
 
-			if isAccepted == ACCEPTED:
-				cursor.execute("INSERT INTO offered_cipher_suites(website_id, cipher_id, tls_id) values (?,?,?)",  (website[0], cipher[0], tls_index))
-			elif isAccepted == TIMEOUT:
-				timeout_counter += 1
-				if timeout_counter > 10:
-					logger.info('No response from website (timeout): %s, skipping' % website[1])
-					break
-			elif isAccepted == ERROR:
-				logger.info('No response from website (error): %s, skipping' % website[1])
-				break
+	for index in range(10):
+		threadX = myThread(index, websites[10000*index:9999 + 10000*index], cipher_ids, logger, tls_index)
+		threadX.start()
+		threads.append(threadX)
 
-		conn.commit()
-	
+	for t in threads:
+		t.join()
+
 	return
 
 if __name__ == '__main__':
