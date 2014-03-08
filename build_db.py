@@ -2,7 +2,7 @@ import sqlite3, csv
 
 def setup_db(website_file, cipher_suites_file):
 	tables = ("cipher_suites", "websites", "offered_cipher_suites")
-	conn = sqlite3.connect('cipher_survey.db')
+	conn = sqlite3.connect('survey.db')
 	cursor = conn.cursor()
 
 	#drop tables if they exist
@@ -47,6 +47,7 @@ def create_db(cursor, conn):
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		website_id INTEGER NOT NULL,
 		cipher_id INTEGER NOT NULL,
+		tls_id INTEGER NOT NULL,
 		FOREIGN KEY(website_id) REFERENCES websites(id),
 		FOREIGN KEY(cipher_id) REFERENCES cipher_suites(id)
 		)''')
