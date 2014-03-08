@@ -25,8 +25,15 @@ def create_db(cursor, conn):
 	#create websites table
 	cursor.execute('''CREATE TABLE cipher_suites (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		hex VARCHAR(8) NOT NULL, 
 		name VARCHAR(255) NOT NULL,
-		is_secure BOOLEAN
+		protocol VARCHAR(3),
+		kx VARCHAR(255),
+		au VARCHAR(255),
+		enc VARCHAR(255),
+		bits INTEGER,
+		mac VARCHAR(255), 
+		strength VARCHAR(10)
 		)''')
 
 	#create ciphersuites table
@@ -64,8 +71,8 @@ def populate_db(website_file, cipher_suites_file, cursor, conn):
 	conn.executemany("INSERT INTO websites(id, name) values (?,?)", websites)
 	conn.commit()
 
-	suites = csv.reader(open(cipher_suites_file))
-	conn.executemany("INSERT INTO cipher_suites(id, name) values (?,?)", suites)
+	suites = csv.reader(open(cipher_suites_file, 'rU'))
+	conn.executemany("INSERT INTO cipher_suites(hex, name, protocol, kx, au, enc, bits, mac, strength) values (?,?,?,?,?,?,?,?,?)", suites)
 	conn.commit()
 
 	return
